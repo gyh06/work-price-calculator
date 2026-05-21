@@ -48,6 +48,7 @@
             border-radius: 16px;
             font-size: 15px;
             background: #fff;
+            font-family: inherit;
         }
         input:focus, select:focus { border-color: #2d7aff; outline: none; }
         button { background: #2d7aff; color: white; border: none; padding: 12px 16px; border-radius: 16px; cursor: pointer; }
@@ -80,7 +81,15 @@
         .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
         .pagination button { width: auto; padding: 8px 16px; background: #f0f4ff; color: #1f2d3d; }
         .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 10px 20px; border-radius: 40px; z-index: 2000; font-size: 14px; }
-        .quote-preview { font-family: 'PingFang SC', Arial; max-width: 700px; margin: 0 auto; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .quote-preview {
+            font-family: 'PingFang SC', Arial;
+            max-width: 700px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
         .quote-preview h1 { font-size: 24px; text-align: center; margin-bottom: 20px; color: #2d7aff; }
         .quote-preview hr { margin: 15px 0; border: 0; border-top: 2px solid #e6eaf0; }
         .quote-preview .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
@@ -225,7 +234,7 @@
             let existing = state.historyOrders[existingIndex];
             let curStr = JSON.stringify(order);
             let existStr = JSON.stringify(existing);
-            if(curStr === existStr) { showToast('内容未变化，未重复保存'); return; }
+            if(curStr === existStr) { showToast('内容未变化，未重复保存'); return false; }
             let versionMatch = order.orderId.match(/^(.*?)(?:\((\d+)\))?$/);
             let baseId = versionMatch[1];
             let maxVer = 1;
@@ -240,7 +249,7 @@
             state.historyOrders.push(order);
         }
         saveHistory();
-        showToast('已保存至历史订单');
+        return true;
     }
 
     function showToast(msg) { let t=document.createElement('div'); t.className='toast'; t.innerText=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2000); }
@@ -284,7 +293,7 @@
                 <td><input type="number" class="proc-price" data-idx="${idx}" value="${p.price||''}" step="any"></td>
                 <td class="proc-total">${calcProcessPrice(p).toFixed(2)}</td>
                 <td><span class="del-btn" data-idx="${idx}">✖</span></td>
-            </tr>`;
+            </table>`;
         });
         tbody.innerHTML = html;
         document.querySelectorAll('.select-process-btn').forEach(btn=>{ btn.onclick = () => { let idx=parseInt(btn.dataset.idx); openProcessModal(idx); }; });
@@ -349,28 +358,78 @@
         document.querySelectorAll('.del-btn[data-extra-idx]').forEach(btn=>{ btn.onclick = (e) => { let idx=parseInt(btn.dataset.extraIdx); state.extraItems.splice(idx,1); renderExtraItems(); updateAllCalculations(); }; });
     }
 
+    function getQuoteHTML(order) {
+        let matName = order.material ? `${order.material.name} (${order.material.density}g/cm³)` : '未选择';
+        let dimensions = order.shape === '方形' 
+            ? `长${order.dimensions.l||0}mm × 宽${order.dimensions.w||0}mm × 高${order.dimensions.h||0}mm`
+            : `直径${order.dimensions.d||0}mm × 高${order.dimensions.h||0}mm`;
+        return `
+            <div class="quote-preview" style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                <h1 style="font-size: 24px; text-align: center; margin-bottom: 20px; color: #2d7aff;">工价计算器报价单</h1>
+                <hr style="margin: 15px 0; border: 0; border-top: 2px solid #e6eaf0;">
+                <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px;"><span>编号：${order.orderId}</span><span>日期：${order.date}</span></div>
+                <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px;"><span>甲方：${order.clientName || '未填写'}</span><span>乙方：${order.ourCompany || '未填写'}</span></div>
+                <hr style="margin: 15px 0;">
+                <div class="section-title" style="font-size: 18px; font-weight: 600; margin: 20px 0 10px; color: #1f2d3d; border-left: 4px solid #2d7aff; padding-left: 12px;">📦 材料费用</div>
+                <div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>材料类型：</span><span>${matName}</span></div>
+                <div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>零件尺寸：</span><span>${dimensions}</span></div>
+                <div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>材料单价：</span><span>${parseFloat(order.materialPrice||0).toFixed(2)} 元/kg</span></div>
+                <div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>单重：</span><span>${calculateWeightForOrder(order).toFixed(3)} kg</span></div>
+                <div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>数量：</span><span>${order.quantity} 件</span></div>
+                <div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span><strong>材料总成本：</strong></span><span><strong>${totalMaterialCostForOrder(order).toFixed(2)} 元</strong></span></div>
+                <div class="section-title" style="font-size: 18px; font-weight: 600; margin: 20px 0 10px; color: #1f2d3d; border-left: 4px solid #2d7aff; padding-left: 12px;">⚙️ 加工工序</div>
+                ${order.processes.map(p => `<div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>${p.procName||'未选择'}</span><span>${p.hours||0}${p.unit} × ${parseFloat(p.price||0).toFixed(2)} = ${calcProcessPriceForOrder(p).toFixed(2)}元</span></div>`).join('')}
+                <div class="section-title" style="font-size: 18px; font-weight: 600; margin: 20px 0 10px; color: #1f2d3d; border-left: 4px solid #2d7aff; padding-left: 12px;">💰 其他费用</div>
+                ${order.extraItems.map(it => `<div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>${it.name||'其他'}</span><span>${parseFloat(it.fee||0).toFixed(2)} 元</span></div>`).join('')}
+                ${order.delivery==='运送'&&order.shippingFee?`<div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>运费</span><span>${parseFloat(order.shippingFee).toFixed(2)} 元</span></div>`:''}
+                <div class="item-line" style="display: flex; justify-content: space-between; padding: 6px 0;"><span>税费：</span><span>${order.taxIncluded?'已含13%增值税':'未含税'}</span></div>
+                <hr style="margin: 20px 0;">
+                <div class="total-line" style="font-size: 20px; font-weight: bold; margin-top: 20px; text-align: right; color: #2d7aff;">总价：¥ ${(order.totalPrice||0).toFixed(2)}</div>
+                <div class="footer" style="text-align: center; font-size: 12px; color: #aaa; margin-top: 30px;">本报价单由「工价计算器」生成，仅供参考</div>
+            </div>
+        `;
+    }
+
+    function calculateWeightForOrder(order) {
+        if(!order.material) return 0;
+        let vol = 0;
+        if(order.shape === '方形') vol = (parseFloat(order.dimensions.l)||0)*(parseFloat(order.dimensions.w)||0)*(parseFloat(order.dimensions.h)||0);
+        else vol = Math.PI * ((parseFloat(order.dimensions.d)||0)/2)**2 * (parseFloat(order.dimensions.h)||0);
+        return (vol/1000) * order.material.density / 1000;
+    }
+    function totalMaterialCostForOrder(order) {
+        return calculateWeightForOrder(order) * (parseFloat(order.materialPrice)||0) * (parseInt(order.quantity)||1);
+    }
+    function calcProcessPriceForOrder(p) {
+        let h = parseFloat(p.hours)||0;
+        if(p.unit === '秒') h /= 3600;
+        else if(p.unit === '分') h /= 60;
+        return h * (parseFloat(p.price)||0);
+    }
+
     function captureAndSave() {
-        let cloneCard = document.querySelector('.result-row')?.closest('.card');
-        if(!cloneCard) return;
-        let clone = cloneCard.cloneNode(true);
-        let btns = clone.querySelectorAll('.btn-group, button, .add-btn, .del-btn, .select-process-btn, .tree-root, .tree-children, .search-box');
-        btns.forEach(el=>{ if(el) el.style.display = 'none'; });
+        let order = getCurrentOrderData();
         let tempDiv = document.createElement('div');
-        tempDiv.style.position = 'fixed'; tempDiv.style.top = '-9999px'; tempDiv.style.left = '-9999px';
-        tempDiv.appendChild(clone);
+        tempDiv.style.position = 'fixed';
+        tempDiv.style.top = '-9999px';
+        tempDiv.style.left = '-9999px';
+        tempDiv.innerHTML = getQuoteHTML(order);
         document.body.appendChild(tempDiv);
-        html2canvas(clone, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
+        let quoteElem = tempDiv.querySelector('.quote-preview');
+        if(!quoteElem) { document.body.removeChild(tempDiv); showToast('生成失败'); return; }
+        html2canvas(quoteElem, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
             let imgData = canvas.toDataURL('image/png');
             let link = document.createElement('a');
-            link.download = `报价单_${state.orderId}.png`;
+            link.download = `报价单_${order.orderId}.png`;
             link.href = imgData;
             link.click();
             document.body.removeChild(tempDiv);
-            showToast('已保存至图库');
             if(state.isLoggedIn) {
-                let order = getCurrentOrderData();
-                addToHistory(order);
-                showToast('已保存至图库，同时已保存至历史订单');
+                let saved = addToHistory(order);
+                if(saved) showToast('已保存至图库，同时已保存至历史订单');
+                else showToast('已保存至图库');
+            } else {
+                showToast('已保存至图库（游客模式未保存历史）');
             }
         }).catch(() => { document.body.removeChild(tempDiv); showToast('保存失败'); });
     }
@@ -462,24 +521,7 @@
 
     function showQuoteDetail(order) {
         let modal = document.createElement('div'); modal.className='modal'; modal.style.display='flex';
-        let html = `<div class="modal-content" style="max-width:600px;"><div class="quote-preview">
-            <h1>工价计算器报价单</h1><hr>
-            <div class="info-row"><span>编号：${order.orderId}</span><span>日期：${order.date}</span></div>
-            <div class="info-row"><span>甲方：${order.clientName || '未填写'}</span><span>乙方：${order.ourCompany || '未填写'}</span></div>
-            <hr><div class="section-title">📦 材料费用</div>
-            <div class="item-line"><span>材料类型：</span><span>${order.material?`${order.material.name} (${order.material.density}g/cm³)`:'未选择'}</span></div>
-            <div class="item-line"><span>材料单价：</span><span>${parseFloat(order.materialPrice||0).toFixed(2)} 元/kg</span></div>
-            <div class="item-line"><span>单重：</span><span>0.000 kg</span></div>
-            <div class="item-line"><span>数量：</span><span>${order.quantity} 件</span></div>
-            <div class="item-line"><span><strong>材料总成本：</strong></span><span><strong>${order.totalPrice?order.totalPrice.toFixed(2):'0.00'} 元</strong></span></div>
-            <div class="section-title">⚙️ 加工工序</div>${order.processes.map(p=>`<div class="item-line"><span>${p.procName||'未选择'}</span><span>${p.hours||0}${p.unit} × ${parseFloat(p.price||0).toFixed(2)} = ${(calcProcessPrice(p)).toFixed(2)}元</span></div>`).join('')}
-            <div class="section-title">💰 其他费用</div>${order.extraItems.map(it=>`<div class="item-line"><span>${it.name||'其他'}</span><span>${parseFloat(it.fee||0).toFixed(2)} 元</span></div>`).join('')}
-            ${order.delivery==='运送'&&order.shippingFee?`<div class="item-line"><span>运费</span><span>${parseFloat(order.shippingFee).toFixed(2)} 元</span></div>`:''}
-            <div class="item-line"><span>税费：</span><span>${order.taxIncluded?'已含13%增值税':'未含税'}</span></div>
-            <hr><div class="total-line">总价：¥ ${(order.totalPrice||0).toFixed(2)}</div>
-            <div class="footer">本报价单由「工价计算器」生成</div>
-        </div><div style="display:flex; justify-content:flex-end; margin-top:16px;"><button id="closeDetailBtn">关闭</button></div></div>`;
-        modal.innerHTML = html;
+        modal.innerHTML = `<div class="modal-content" style="max-width:600px;">${getQuoteHTML(order)}<div style="display:flex; justify-content:flex-end; margin-top:16px;"><button id="closeDetailBtn">关闭</button></div></div>`;
         document.body.appendChild(modal);
         document.getElementById('closeDetailBtn').onclick = () => modal.remove();
     }
